@@ -13,15 +13,15 @@ from pymatgen.core.structure import Structure
 from pymatgen.core.composition import Composition
 from pymatgen.core.lattice import Lattice
 from pymatgen.analysis.structure_matcher import StructureMatcher
-from matminer.featurizers.site.fingerprint import CrystalNNFingerprint
-from matminer.featurizers.composition.composite import ElementProperty
+# from matminer.featurizers.site.fingerprint import CrystalNNFingerprint
+# from matminer.featurizers.composition.composite import ElementProperty
 
 from eval_utils import (
     smact_validity, structure_validity, CompScaler, get_fp_pdist,
     load_config, load_data, get_crystals_list, prop_model_eval, compute_cov)
 
-CrystalNNFP = CrystalNNFingerprint.from_preset("ops")
-CompFP = ElementProperty.from_preset('magpie')
+# CrystalNNFP = CrystalNNFingerprint.from_preset("ops")
+# CompFP = ElementProperty.from_preset('magpie')
 
 Percentiles = {
     'mp20': np.array([-3.17562208, -2.82196882, -2.52814761]),
@@ -47,8 +47,8 @@ class Crystal(object):
 
         self.get_structure()
         self.get_composition()
-        self.get_validity()
-        self.get_fingerprints()
+        # self.get_validity()
+        # self.get_fingerprints()
 
     def get_structure(self):
         if min(self.lengths.tolist()) < 0:
@@ -61,6 +61,8 @@ class Crystal(object):
                         *(self.lengths.tolist() + self.angles.tolist())),
                     species=self.atom_types, coords=self.frac_coords, coords_are_cartesian=False)
                 self.constructed = True
+                # get human readable composition
+                self.comp_pretty= self.structure.composition.to_pretty_string()
             except Exception:
                 self.constructed = False
                 self.invalid_reason = 'construction_raises_exception'
@@ -86,20 +88,20 @@ class Crystal(object):
             self.struct_valid = False
         self.valid = self.comp_valid and self.struct_valid
 
-    def get_fingerprints(self):
-        elem_counter = Counter(self.atom_types)
-        comp = Composition(elem_counter)
-        self.comp_fp = CompFP.featurize(comp)
-        try:
-            site_fps = [CrystalNNFP.featurize(
-                self.structure, i) for i in range(len(self.structure))]
-        except Exception:
-            # counts crystal as invalid if fingerprint cannot be constructed.
-            self.valid = False
-            self.comp_fp = None
-            self.struct_fp = None
-            return
-        self.struct_fp = np.array(site_fps).mean(axis=0)
+    # def get_fingerprints(self):
+    #     elem_counter = Counter(self.atom_types)
+    #     comp = Composition(elem_counter)
+    #     self.comp_fp = CompFP.featurize(comp)
+    #     try:
+    #         site_fps = [CrystalNNFP.featurize(
+    #             self.structure, i) for i in range(len(self.structure))]
+    #     except Exception:
+    #         # counts crystal as invalid if fingerprint cannot be constructed.
+    #         self.valid = False
+    #         self.comp_fp = None
+    #         self.struct_fp = None
+    #         return
+    #     self.struct_fp = np.array(site_fps).mean(axis=0)
 
 
 class RecEval(object):
@@ -324,12 +326,34 @@ def main(args):
     if 'opt' in args.tasks:
         opt_file_path = get_file_paths(args.root_path, 'opt', args.label)
         crys_array_list, _ = get_crystal_array_list(opt_file_path)
+        # makes crystals from crys_array_list
         opt_crys = p_map(lambda x: Crystal(x), crys_array_list)
 
         opt_evaluator = OptEval(opt_crys, eval_model_name=eval_model_name)
         opt_metrics = opt_evaluator.get_metrics()
         all_metrics.update(opt_metrics)
+    if 'cifs_gen' in args.tasks:
+        # convert the generated crystals to cif files
+        gen_file_path = get_file_paths(args.root_path, 'gen', args.label)
+        print("get crystal array list")
+        crys_array_list, _ = get_crystal_array_list(gen_file_path)
+        print("convert to pymatgen crystal")
+        gen_crys = p_map(lambda x: Crystal(x), crys_array_list)
+        # use tqdm for for loop to track progress
+        for i, c in enumerate(tqdm(gen_crys)):
+            # if c.valid:
+                c.structure.to(filename=f'{args.root_path}cifs_gen/gen_{c.comp_pretty}.cif')
 
+    if 'cifs_opt' in args.tasks:
+        # convert the optimized crystals to cif files
+        opt_file_path = get_file_paths(args.root_path, 'opt', args.label)
+        crys_array_list, _ = get_crystal_array_list(opt_file_path)
+        opt_crys = p_map(lambda x: Crystal(x), crys_array_list)
+        # use tqdm for for loop to track progress
+        for i, c in enumerate(tqdm(opt_crys)):
+            if c.valid:
+                # use composition as the filename
+                c.structure.to(filename=f'{args.root_path}cifs_opt/opt_{c.comp_pretty}.cif')
     print(all_metrics)
 
     if args.label == '':

@@ -20,6 +20,8 @@ def make_cif(folder_filepath, csv_filepath, val_split=0.1, test_split=0.1):
     csv_filepath is the filepath to the csv that already contains the id, tc, and pretty_formula columns
     """
     csv = pd.read_csv(csv_filepath)
+    # drop pretty_formula column
+    csv = csv.drop(columns=['pretty_formula'])
     all_files = sorted(glob.glob(os.path.join(folder_filepath, '*.cif')))
     # only take the first 100
 
@@ -34,6 +36,8 @@ def make_cif(folder_filepath, csv_filepath, val_split=0.1, test_split=0.1):
     cif_df = cif_df.rename(columns={'index': 'id'})
     print(cif_df)
     csv = csv.merge(cif_df, on='id', how='inner')
+    # rename id to material_id
+    csv = csv.rename(columns={'id': 'material_id'})
     print(csv)
     # split into train val test
     train_df = csv.sample(frac=1 - val_split - test_split)

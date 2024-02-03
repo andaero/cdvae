@@ -47,6 +47,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
         callbacks.append(
             ModelCheckpoint(
                 dirpath=Path(HydraConfig.get().run.dir),
+                filename=cfg.train.filename,
                 monitor=cfg.train.monitor_metric,
                 mode=cfg.train.monitor_metric_mode,
                 save_top_k=cfg.train.model_checkpoints.save_top_k,
@@ -56,6 +57,17 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
 
     return callbacks
 
+def load_checkpoint(cfg: DictConfig) -> str:
+    # Load checkpoint (if exist)
+    hydra_dir = Path(HydraConfig.get().run.dir)
+    ckpts = list(hydra_dir.glob('*.ckpt'))
+    if len(ckpts) > 0:
+        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
+        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+        hydra.utils.log.info(f"found checkpoint: {ckpt}")
+    else:
+        ckpt = None
+    return ckpt
 
 def run(cfg: DictConfig) -> None:
     """
@@ -63,6 +75,7 @@ def run(cfg: DictConfig) -> None:
 
     :param cfg: run configuration, defined by Hydra in /conf
     """
+    print(cfg.data.load_data)
     if cfg.train.deterministic:
         seed_everything(cfg.train.random_seed)
 
@@ -84,10 +97,16 @@ def run(cfg: DictConfig) -> None:
     hydra_dir = Path(HydraConfig.get().run.dir)
 
     # Instantiate datamodule
-    hydra.utils.log.info(f"Instantiating <{cfg.data.datamodule._target_}>")
-    datamodule: pl.LightningDataModule = hydra.utils.instantiate(
-        cfg.data.datamodule, _recursive_=False
-    )
+    # if loading from saved
+    if cfg.data.load_data:
+        hydra.utils.log.info(f"Loading data from <{cfg.data.datamodule._target_}>")
+        datamodule = torch.load(hydra_dir / '64_datamodule_v2.pt')
+    else:
+        hydra.utils.log.info(f"Instantiating <{cfg.data.datamodule._target_}>")
+        datamodule: pl.LightningDataModule = hydra.utils.instantiate(
+            cfg.data.datamodule, _recursive_=False
+        )
+        torch.save(datamodule, hydra_dir / '64_datamodule_FULL.pt')
 
     # Instantiate model
     hydra.utils.log.info(f"Instantiating <{cfg.model._target_}>")
@@ -129,13 +148,7 @@ def run(cfg: DictConfig) -> None:
     (hydra_dir / "hparams.yaml").write_text(yaml_conf)
 
     # Load checkpoint (if exist)
-    ckpts = list(hydra_dir.glob('*.ckpt'))
-    if len(ckpts) > 0:
-        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        hydra.utils.log.info(f"found checkpoint: {ckpt}")
-    else:
-        ckpt = None
+    ckpt = load_checkpoint(cfg)
           
     hydra.utils.log.info("Instantiating the Trainer")
     trainer = pl.Trainer(
@@ -149,10 +162,18 @@ def run(cfg: DictConfig) -> None:
         **cfg.train.pl_trainer,
     )
     log_hyperparameters(trainer=trainer, model=model, cfg=cfg)
-
-    hydra.utils.log.info("Starting training!")
-    trainer.fit(model=model, datamodule=datamodule)
-
+    # run forever until training is complete, avoiding exceptions
+    while True:
+        try:
+            # Run the training
+            hydra.utils.log.info("Starting training!")
+            # update trainer resume_from_checkpoint
+            trainer.resume_from_checkpoint = load_checkpoint(cfg)
+            trainer.fit(model=model, datamodule=datamodule)
+            break
+        except Exception as e:
+            print("---------------> EXCEPTION:", e)
+            continue
     hydra.utils.log.info("Starting testing!")
     trainer.test(datamodule=datamodule)
 

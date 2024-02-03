@@ -9,9 +9,10 @@ graph_method: crystalnn
 lattice_scale_method: scale_length
 preprocess_workers: 30
 readout: mean
-max_atoms: 124
+max_atoms: 444
 otf_graph: false
 eval_model_name: supercon
+load_data: true
 
 
 train_max_epochs: 4000
@@ -57,11 +58,11 @@ datamodule:
         preprocess_workers: ${data.preprocess_workers}
 
   num_workers:
-    train: 0
-    val: 0
-    test: 0
+    train: 16
+    val: 16
+    test: 16
 
   batch_size:
-    train: 256
+    train: 64
     val: 256
     test: 256

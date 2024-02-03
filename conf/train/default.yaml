@@ -18,6 +18,7 @@ pl_trainer:
 
 monitor_metric: 'val_loss'
 monitor_metric_mode: 'min'
+filename: '{epoch}-{val_loss:.3f}-{step}'
 
 early_stopping:
   patience: ${data.early_stopping_patience} # 60
@@ -25,4 +26,4 @@ early_stopping:
 
 model_checkpoints:
   save_top_k: 1
-  verbose: False
+  verbose: True

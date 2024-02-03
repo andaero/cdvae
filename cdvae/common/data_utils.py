@@ -116,7 +116,6 @@ def build_crystal_graph(crystal, graph_method='crystalnn'):
         pass
     else:
         raise NotImplementedError
-
     frac_coords = crystal.frac_coords
     atom_types = crystal.atomic_numbers
     lattice_parameters = crystal.lattice.parameters
@@ -655,7 +654,11 @@ def preprocess(input_file, num_workers, niggli, primitive, graph_method,
         crystal_str = row['cif']
         crystal = build_crystal(
             crystal_str, niggli=niggli, primitive=primitive)
-        graph_arrays = build_crystal_graph(crystal, graph_method)
+        try:
+            graph_arrays = build_crystal_graph(crystal, graph_method)
+        except:
+            print('-------> PREPROCESSING: Failed to build graph for', row['material_id'])
+            graph_arrays = None
         properties = {k: row[k] for k in prop_list if k in row.keys()}
         result_dict = {
             'mp_id': row['material_id'],
@@ -677,7 +680,12 @@ def preprocess(input_file, num_workers, niggli, primitive, graph_method,
     mpid_to_results = {result['mp_id']: result for result in unordered_results}
     ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
                        for idx in range(len(df))]
-
+    # print number of failed results
+    print('Number of failed results:', sum([result['graph_arrays'] is None for result in ordered_results]))
+    # print their mp_ids
+    print('Failed mp_ids:', [result['mp_id'] for result in ordered_results if result['graph_arrays'] is None])
+    # remove failed results
+    ordered_results = [result for result in ordered_results if result['graph_arrays'] is not None]
     return ordered_results
 
 

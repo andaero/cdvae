@@ -178,6 +178,7 @@ class CDVAE(BaseModule):
         # obtain from datamodule.
         self.lattice_scaler = None
         self.scaler = None
+        self.count = 0
 
     def reparameterize(self, mu, logvar):
         """
@@ -196,6 +197,7 @@ class CDVAE(BaseModule):
         encode crystal structures to latents.
         """
         hidden = self.encoder(batch)
+        # print("HIDDEN ----------------", hidden)
         mu = self.fc_mu(hidden)
         log_var = self.fc_var(hidden)
         z = self.reparameterize(mu, log_var)
@@ -306,10 +308,12 @@ class CDVAE(BaseModule):
                         device=self.device)
         samples = self.langevin_dynamics(z, ld_kwargs)
         return samples
-
     def forward(self, batch, teacher_forcing, training):
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
+        # print(self.count)
+        self.count += 64 #474
         mu, log_var, z = self.encode(batch)
+
 
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
@@ -335,6 +339,14 @@ class CDVAE(BaseModule):
         atom_type_probs = (
             F.one_hot(batch.atom_types - 1, num_classes=MAX_ATOMIC_NUM) +
             pred_composition_probs * used_type_sigmas_per_atom[:, None])
+        # check if probability tensor contains either `inf`, `nan` or element < 0
+        if torch.any(torch.isnan(atom_type_probs)) or torch.any(torch.isinf(atom_type_probs)) or torch.any(atom_type_probs < 0):
+            # print("BATCH ----------------", batch)
+            # print("MU ----------------", mu)
+            # print("LOG VAR ----------------", log_var)
+            # print("Z ----------------", z)
+            print("ATOM TYPE PROBS ----------------", atom_type_probs)
+            print('ATOM TYPE PROBS DIMS ----------------', atom_type_probs.size())
         rand_atom_types = torch.multinomial(
             atom_type_probs, num_samples=1).squeeze(1) + 1
 
@@ -465,6 +477,7 @@ class CDVAE(BaseModule):
         return pred_composition_per_atom
 
     def num_atom_loss(self, pred_num_atoms, batch):
+        # print("BATCH NUM ATOMS ----------------", torch.max(batch.num_atoms))
         return F.cross_entropy(pred_num_atoms, batch.num_atoms)
 
     def property_loss(self, z, batch):

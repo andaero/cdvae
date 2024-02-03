@@ -5,7 +5,7 @@ channels:
 dependencies:
 - ase=3.22
 - autopep8
-- cudatoolkit=10.2
+- cudatoolkit=11.1
   #- ipywidgets
   #- jupyterlab
   #- matminer=0.7.3
@@ -20,7 +20,7 @@ dependencies:
 - seaborn
 - tqdm
 - pip:
-  - -f https://pytorch-geometric.com/whl/torch-1.9.0+cu102.html
+  - -f https://pytorch-geometric.com/whl/torch-1.9.0+cu111.html
   - torch-geometric==1.7.2
   - higher==0.2.1
   - hydra-core==1.1.0
